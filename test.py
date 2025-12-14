@@ -20,13 +20,14 @@ if __name__ == "__main__":
     logger = setup_logger()
 
     # repo_downloader 테스트
+    user_name = "vbn930"
     repo_downloader = RepoDownloader(logger)
 
-    repos = repo_downloader.get_repos_from_git_hub("vbn930")
+    repos = repo_downloader.get_repos_from_git_hub(user_name)
     logger.debug(f"Total {len(repos)} repos loaded")
     archive_pairs = repo_downloader.get_archive_links(repos)
     logger.debug(f"Total {len(archive_pairs)} archive loaded")
 
-    downloaded_file_paths = asyncio.run(repo_downloader.download_all_repos_async(archive_pairs, download_dir))
+    repo_names, downloaded_file_paths = asyncio.run(repo_downloader.download_all_repos_async(user_name, archive_pairs, download_dir))
     
     logger.debug(f"Total {len(downloaded_file_paths)}  downloaded")

@@ -37,16 +37,21 @@ class RepoDownloader:
         
         return archive_pairs
     
-    async def download_all_repos_async(self, archive_pairs: list, download_dir: str) -> list:
+    async def download_all_repos_async(self, user_name: str, archive_pairs: list, download_dir: str) -> list:
         downloaded_file_paths = []
-        success_list, file_names = await utils.downloader.download_all_async(archive_pairs, download_dir, self.logger)
+        repo_names = []
         
-        for is_success, filename in zip(success_list, file_names):
+        new_download_dir = os.path.join(download_dir, user_name)
+        os.makedirs(new_download_dir, exist_ok=True)
+        
+        success_list, file_names = await utils.downloader.download_all_async(archive_pairs, new_download_dir, self.logger)
+        
+        for is_success, filename, archive_pair in zip(success_list, file_names, archive_pairs):
             if is_success:
-                downloaded_file_path = os.path.join(download_dir, filename)
+                ziped_file_path = os.path.join(new_download_dir, filename)
+                
+                downloaded_file_path = utils.file_manager.unzip_and_clean(ziped_file_path, new_download_dir, self.logger)
                 downloaded_file_paths.append(downloaded_file_path)
-                
-                utils.file_manager.unzip_and_clean(downloaded_file_path, download_dir, self.logger)
-                
+                repo_names.append(archive_pair[0])
         
-        return downloaded_file_paths
+        return repo_names, downloaded_file_paths

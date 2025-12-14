@@ -39,3 +39,5 @@ def unzip_and_clean(zip_path, extract_to, logger: logging.Logger):
             
             # 빈 껍데기 폴더 삭제
             os.rmdir(inner_folder_path)
+            
+    return os.path.abspath(extract_to)

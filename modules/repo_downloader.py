@@ -45,5 +45,8 @@ class RepoDownloader:
             if is_success:
                 downloaded_file_path = os.path.join(download_dir, filename)
                 downloaded_file_paths.append(downloaded_file_path)
+                
+                utils.file_manager.unzip_and_clean(downloaded_file_path, download_dir, self.logger)
+                
         
         return downloaded_file_paths

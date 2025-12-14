@@ -1,12 +1,10 @@
+import os
+import asyncio
 
 from utils.logger import setup_logger
 
-from modules import FileManager
 from modules import ReadmeGenerator
 from modules import RepoDownloader
-
-import os
-import asyncio
 
 # 1. 현재 실행 중인 파일(app.py)의 절대 경로를 구함
 current_file_path = os.path.abspath(__file__)
@@ -29,8 +27,3 @@ archive_pairs = repo_downloader.get_archive_links(repos)
 logger.debug(f"Total {len(archive_pairs)} archive loaded")
 
 downloaded_file_paths = asyncio.run(repo_downloader.download_all_repos_async(archive_pairs, download_dir))
-
-for downloaded_file_path in downloaded_file_paths:
-    logger.debug(f"다운로드 완료 경로: {downloaded_file_path}")
-
-logger.debug(f"Total {len(downloaded_file_paths)} downloaded")

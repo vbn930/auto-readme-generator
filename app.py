@@ -39,6 +39,9 @@ if 'archive_pairs' not in st.session_state:
 if 'user_name' not in st.session_state:
     st.session_state.user_name = None
 
+if 'loaded_repos' not in st.session_state:
+    st.session_state.loaded_repos = []
+
 if 'download_dir' not in st.session_state:
     current_file_path = os.path.abspath(__file__)
     root_dir = os.path.dirname(current_file_path)
@@ -114,7 +117,7 @@ with col_mid:
         for repo in st.session_state.archive_pairs:
             is_checked = st.checkbox(f"📁 {repo[0]}", value=select_all)
             if is_checked:
-                selected_repos.append(repo[0])
+                selected_repos.append(repo)
     
     st.write("") # 여백
     
@@ -155,7 +158,7 @@ with col_mid:
                 # [Step 1] 다운로드 (Spinner)
                 # -------------------------------------------------
                 with st.spinner(f"📦 {len(selected_repos)}개의 레포지토리 다운로드 중..."):
-                    repo_names, file_paths = await repo_downloader.download_all_repos_async(st.session_state.user_name, st.session_state.archive_pairs, st.session_state.download_dir)
+                    repo_names, file_paths = await repo_downloader.download_all_repos_async(st.session_state.user_name, selected_repos, st.session_state.download_dir)
                 
                 st.toast("다운로드 완료! AI 생성을 시작합니다.", icon="✅")
                 

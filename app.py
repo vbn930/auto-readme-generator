@@ -1,29 +1,128 @@
 import os
 import asyncio
 
+import streamlit as st
+
 from utils.logger import setup_logger
 
 from modules import ReadmeGenerator
 from modules import RepoDownloader
 
-# 1. 현재 실행 중인 파일(app.py)의 절대 경로를 구함
-current_file_path = os.path.abspath(__file__)
+# 페이지 기본 설정 (화면을 넓게 씀)
+st.set_page_config(page_title="GitHub README Generator", layout="wide")
 
-# 2. 그 파일이 있는 폴더(디렉토리) 경로만 추출
-root_dir = os.path.dirname(current_file_path)
+# 세션 상태 초기화 (우측 미리보기 인덱스 관리를 위해 필요)
+if 'preview_index' not in st.session_state:
+    st.session_state.preview_index = 0
 
-# 3. 그 폴더 안에 'downloads' 경로 생성
-download_dir = os.path.join(root_dir, "downloads")
-os.makedirs(download_dir, exist_ok=True)
+# --- [목업 데이터] 실제 로직 연결 시 삭제될 부분 ---
+MOCK_REPOS = [
+    {"name": "Distributed-System-Engine", "content": "# Distributed System Engine\n\n이 프로젝트는 분산 시스템을 위한..."},
+    {"name": "Real-Time-Network-Lib", "content": "# Real-Time Network Lib\n\nUDP 기반의 신뢰성 있는 전송을 보장하는..."},
+    {"name": "AI-Pathfinding-Study", "content": "# AI Pathfinding\n\nA* 알고리즘과 JPS를 비교 분석한..."},
+]
 
-logger = setup_logger()
+def get_current_repo():
+    """현재 인덱스에 해당하는 레포지토리 정보를 반환"""
+    idx = st.session_state.preview_index % len(MOCK_REPOS)
+    return MOCK_REPOS[idx]
 
-# repo_downloader 테스트
-repo_downloader = RepoDownloader(logger)
+# --- [UI 레이아웃] ---
+st.title("Auto README Generator Dashboard")
+st.markdown("---")
 
-repos = repo_downloader.get_repos_from_git_hub("vbn930")
-logger.debug(f"Total {len(repos)} repos loaded")
-archive_pairs = repo_downloader.get_archive_links(repos)
-logger.debug(f"Total {len(archive_pairs)} archive loaded")
+# 3개의 컬럼으로 분할 (비율 조정 가능)
+col_left, col_mid, col_right = st.columns([1, 1.5, 2])
 
-downloaded_file_paths = asyncio.run(repo_downloader.download_all_repos_async(archive_pairs, download_dir))
+# ==========================================
+# 1. 왼쪽: 사용자 입력 및 가져오기
+# ==========================================
+with col_left:
+    st.subheader("1. GitHub 설정")
+    
+    # 유저네임 입력
+    username = st.text_input("GitHub Username", placeholder="e.g., dohun-lee")
+    
+    # 프라이빗 레포 체크박스
+    include_private = st.checkbox("Private Repo 포함 가져오기")
+    
+    st.write("") # 여백
+    
+    # 레포 가져오기 버튼
+    if st.button("유저 레포 가져오기", use_container_width=True):
+        # TODO: GitHub API를 통해 레포지토리 리스트를 불러오는 함수 호출
+        st.info("API 호출: 레포지토리 목록을 가져옵니다 (Mock)")
+
+# ==========================================
+# 2. 중간: 레포 목록 및 선택
+# ==========================================
+with col_mid:
+    st.subheader("2. 레포지토리 선택")
+    
+    # 컨테이너를 사용하여 영역 구분
+    with st.container(border=True):
+        st.write("가져온 레포지토리 목록")
+        
+        # 전체 선택/해제 기능 (선택 사항)
+        select_all = st.checkbox("전체 선택")
+        
+        st.divider()
+        
+        # 레포지토리 리스트 출력 (체크박스)
+        # TODO: 실제 데이터가 들어오면 for문으로 동적 생성
+        selected_repos = []
+        for repo in MOCK_REPOS:
+            is_checked = st.checkbox(f"📁 {repo['name']}", value=select_all)
+            if is_checked:
+                selected_repos.append(repo['name'])
+    
+    st.write("") # 여백
+    
+    # 생성 버튼
+    if st.button("다운로드 및 README 생성", type="primary", use_container_width=True):
+        if not selected_repos:
+            st.warning("레포지토리를 하나 이상 선택해주세요.")
+        else:
+            # TODO: 선택된 레포들을 다운로드하고 AI로 리드미를 생성하는 로직 호출
+            st.success(f"{len(selected_repos)}개의 README 생성을 시작합니다.")
+
+# ==========================================
+# 3. 오른쪽: 미리보기 및 개별 제어
+# ==========================================
+with col_right:
+    st.subheader("3. 결과 미리보기")
+    
+    # 현재 보고 있는 레포 정보 가져오기
+    current_repo = get_current_repo()
+    
+    # --- 카루셀 (네비게이션) ---
+    nav_col1, nav_col2, nav_col3 = st.columns([1, 4, 1], vertical_alignment="center")
+    
+    with nav_col1:
+        if st.button("◀", key="prev"):
+            st.session_state.preview_index -= 1
+            st.rerun()
+            
+    with nav_col2:
+        # 가운데 정렬된 레포 이름
+        st.markdown(f"<h3 style='text-align: center; margin:0;'>{current_repo['name']}</h3>", unsafe_allow_html=True)
+        
+    with nav_col3:
+        if st.button("▶", key="next"):
+            st.session_state.preview_index += 1
+            st.rerun()
+            
+    st.divider()
+    
+    # --- README 미리보기 영역 ---
+    # 실제 마크다운이 렌더링되어 보임
+    preview_container = st.container(height=500, border=True) # 스크롤 가능한 영역
+    with preview_container:
+        st.markdown(current_repo['content'])
+    
+    st.write("") # 여백
+    
+    # --- 개별 재생성 버튼 ---
+    if st.button(f"🔄 '{current_repo['name']}' 리드미만 다시 재생성", use_container_width=True):
+        # TODO: 현재 인덱스의 레포지토리만 다시 생성하는 함수 호출
+        st.toast(f"{current_repo['name']} 리드미를 재생성 중입니다...", icon="🔄")

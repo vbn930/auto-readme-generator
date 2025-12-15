@@ -5,6 +5,7 @@ import time
 import streamlit as st
 
 from utils.logger import setup_logger
+from utils.file_manager import folder_to_markdown
 
 from modules import ReadmeGenerator
 from modules import RepoDownloader
@@ -159,8 +160,19 @@ with col_mid:
                 # -------------------------------------------------
                 with st.spinner(f"📦 {len(selected_repos)}개의 레포지토리 다운로드 중..."):
                     repo_names, file_paths = await repo_downloader.download_all_repos_async(st.session_state.user_name, selected_repos, st.session_state.download_dir)
+                    
                 
-                st.toast("다운로드 완료! AI 생성을 시작합니다.", icon="✅")
+                # Folder to one mark down file
+                with st.status("📦 폴더를 하나의 마크다운 파일로 패키징 중입니다...", expanded=True) as status:
+                    st.write("폴더 패키징 중입니다. 잠시만 기다려주세요...")
+                    
+                    mk_dir = os.path.join(st.session_state.download_dir, st.session_state.user_name)
+                    for selected_repo in selected_repos:
+                        folder_to_markdown(mk_dir, f"{selected_repo[0]}.md", logger)
+                        
+                    
+                
+                st.toast("다운로드 및 패키징 완료! AI 생성을 시작합니다.", icon="✅")
                 
                 # [Step 2] AI 생성 (Spinner or Status)
                 # -------------------------------------------------

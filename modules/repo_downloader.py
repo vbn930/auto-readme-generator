@@ -50,8 +50,8 @@ class RepoDownloader:
             if is_success:
                 ziped_file_path = os.path.join(new_download_dir, filename)
                 
-                downloaded_file_path = utils.file_manager.unzip_and_clean(ziped_file_path, new_download_dir, self.logger)
-                downloaded_file_paths.append(downloaded_file_path)
+                downloaded_file_path, folder_name = utils.file_manager.unzip_and_clean(ziped_file_path, new_download_dir, self.logger)
+                downloaded_file_paths.append(os.path.join(downloaded_file_path, folder_name))
                 repo_names.append(archive_pair[0])
         
         return repo_names, downloaded_file_paths

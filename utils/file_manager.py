@@ -20,13 +20,33 @@ TEXT_EXTENSIONS = {
     '.gradle', '.properties', '.dockerfile', 'makefile', 'cmake', '.cmake'
 }
 
+def get_top_level_folder(zip_path):
+    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+        # 1. 모든 파일/폴더 목록 가져오기
+        all_names = zip_ref.namelist()
+        
+        if not all_names:
+            return None # 빈 파일 처리
+
+        # 2. 각 경로의 가장 첫 번째 부분(루트 폴더명)만 추출해서 집합(Set)으로 만듦
+        # 예: 'project/src/main.py' -> 'project'
+        # 예: 'file.txt' -> 'file.txt'
+        root_items = {name.split('/')[0] for name in all_names}
+
+        # 3. 루트 항목이 딱 1개라면, 그게 최상위 폴더임
+        if len(root_items) == 1:
+            return list(root_items)[0]
+        else:
+            # 루트에 여러 파일이나 폴더가 섞여 있는 경우 (최상위 폴더 없음)
+            return None
+
 def unzip_and_clean(zip_path, extract_to, logger: logging.Logger):
     """
     1. 압축 해제
     2. 원본 zip 파일 삭제
     3. 단일 폴더로 감싸져 있다면 껍질 벗기기 (내용물을 상위로 이동)
     """
-    
+    top_level_folder = get_top_level_folder(zip_path)
     # 1. 압축 해제
     try:
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
@@ -37,27 +57,12 @@ def unzip_and_clean(zip_path, extract_to, logger: logging.Logger):
 
     # 2. 원본 Zip 파일 삭제
     os.remove(zip_path)
-
-    # 3. 폴더 껍질 벗기기 (Flatten)
-    # 압축 푼 폴더 안에 아이템이 딱 하나 있고, 그게 폴더람면? (예: repo/repo-main/...)
-    items = os.listdir(extract_to)
     
-    if len(items) == 1:
-        inner_folder_name = items[0]
-        inner_folder_path = os.path.join(extract_to, inner_folder_name)
+    full_path = os.path.join(extract_to, top_level_folder)
 
-        if os.path.isdir(inner_folder_path):
-            # 내용물들을 전부 상위 폴더(extract_to)로 이동
-            for filename in os.listdir(inner_folder_path):
-                shutil.move(
-                    os.path.join(inner_folder_path, filename), # 원래 위치
-                    os.path.join(extract_to, filename)         # 이동할 위치
-                )
-            
-            # 빈 껍데기 폴더 삭제
-            os.rmdir(inner_folder_path)
-            
-    return os.path.abspath(extract_to)
+    print(full_path)
+    
+    return os.path.abspath(extract_to), full_path
 
 def get_tree_structure(root_dir, prefix=""):
     """폴더 구조를 문자열 트리로 반환"""
@@ -89,7 +94,8 @@ def folder_to_markdown(root_path, output_file, logger: logging.Logger):
     output = []
     root_abs_path = os.path.abspath(root_path)
     project_name = os.path.basename(root_abs_path)
-
+    logger.debug(f"📂 폴더 경로: {root_abs_path}")
+    logger.debug(f"📝 출력 파일: {output_file}")
     logger.debug(f"📦 패키징 시작: {project_name}...")
 
     # 1. 프로젝트 정보 헤더

@@ -167,8 +167,9 @@ with col_mid:
                     st.write("폴더 패키징 중입니다. 잠시만 기다려주세요...")
                     
                     mk_dir = os.path.join(st.session_state.download_dir, st.session_state.user_name)
-                    for selected_repo in selected_repos:
-                        folder_to_markdown(mk_dir, f"{selected_repo[0]}.md", logger)
+                    for repo_name, file_path in zip(repo_names, file_paths):
+                        output_path = os.path.join(mk_dir, f"{repo_name}.md")
+                        folder_to_markdown(file_path, output_path, logger)
                         
                     
                 

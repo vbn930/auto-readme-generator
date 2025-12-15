@@ -164,7 +164,6 @@ with col_mid:
                 
                 # Folder to one mark down file
                 with st.status("📦 폴더를 하나의 마크다운 파일로 패키징 중입니다...", expanded=True) as status:
-                    st.write("폴더 패키징 중입니다. 잠시만 기다려주세요...")
                     
                     mk_dir = os.path.join(st.session_state.download_dir, st.session_state.user_name)
                     for repo_name, file_path in zip(repo_names, file_paths):
@@ -179,7 +178,6 @@ with col_mid:
                 # -------------------------------------------------
                 # 로직이 함수 안으로 숨었기 때문에 UI에서는 단순히 '대기'만 하면 됨
                 with st.status("🧠 AI가 README를 생성하고 있습니다...", expanded=True) as status:
-                    st.write("분석 및 생성 작업을 수행 중입니다. 잠시만 기다려주세요...")
                     
                     # 여기서 '생성 함수'를 호출 (일괄 처리)
                     readme_contents = await mock_generate_all_readmes_async(repo_names, file_paths)

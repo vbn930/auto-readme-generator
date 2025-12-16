@@ -49,6 +49,9 @@ if 'download_dir' not in st.session_state:
     download_dir = os.path.join(root_dir, "downloads")
     os.makedirs(download_dir, exist_ok=True)
     st.session_state.download_dir = download_dir
+    
+if 'results' not in st.session_state:
+    st.session_state.results = []
 
 def get_current_repo():
     """현재 인덱스에 해당하는 레포지토리 정보를 반환"""
@@ -57,6 +60,37 @@ def get_current_repo():
     idx = st.session_state.preview_index % len(st.session_state.archive_pairs)
     return st.session_state.archive_pairs[idx]
 
+# ==========================================
+# 사이드바: 설정 영역
+# ==========================================
+
+with st.sidebar:
+    st.header("⚙️ 환경 설정")
+    
+    # 1. AI 모델 선택
+    ai_model = st.selectbox(
+        "사용할 AI 모델", 
+        ["Gemini", "ChatGPT (OpenAI)"],
+        index=0
+    )
+    
+    # 2. API 키 입력 (비밀번호처럼 가려서 받기)
+    api_key = st.text_input(
+        f"{ai_model} API Key", 
+        type="password",
+        placeholder="sk-..."
+    )
+    
+    st.info("API Key는 저장되지 않고 휘발됩니다.")
+    
+    # (선택) GitHub 토큰도 여기서 받으면 깔끔함
+    st.divider()
+    github_token = st.text_input(
+        "GitHub Token (Optional)", 
+        type="password",
+        help="Private 레포지토리를 접근하려면 필요합니다."
+    )
+    
 # --- [UI 레이아웃] ---
 st.title("Auto README Generator Dashboard")
 st.markdown("---")
@@ -105,7 +139,7 @@ with col_mid:
     st.subheader("2. 레포지토리 선택")
     
     # 컨테이너를 사용하여 영역 구분
-    with st.container(border=True):
+    with st.container(height=400, border=False):
         st.write("가져온 레포지토리 목록")
         
         # 전체 선택/해제 기능 (선택 사항)
@@ -120,6 +154,30 @@ with col_mid:
             if is_checked:
                 selected_repos.append(repo)
     
+    st.write("") # 여백
+    st.divider() # 구분선 추가
+    
+    # ---------------------------------------------------------
+    # [NEW] 3. 생성 옵션 설정 UI
+    # ---------------------------------------------------------
+    st.subheader("3. 생성 옵션")
+    
+    with st.container(border=True):
+        # 1. 언어 선택 (라디오 버튼)
+        target_lang = st.radio(
+            "작성 언어 (Language)", 
+            ["Korean", "English"], 
+            index=0, 
+            horizontal=True
+        )
+        
+        # 2. 강조 키워드 (텍스트 입력)
+        user_keywords = st.text_input(
+            "강조할 키워드 (선택 사항)", 
+            placeholder="예: Real-time, UDP, Zero-copy, Lock-free"
+        )
+        st.caption("💡 입력한 키워드를 중심으로 리드미가 작성됩니다.")
+
     st.write("") # 여백
     
     # ---------------------------------------------------------
@@ -196,7 +254,7 @@ with col_mid:
                 st.success(f"총 {len(final_names)}개의 README가 생성되었습니다.")
                 
                 # (선택) 결과를 세션에 저장하거나 미리보기에 바로 반영
-                # st.session_state.results = zip(final_names, final_contents)
+                st.session_state.results = zip(final_names, final_contents)
                 
             except Exception as e:
                 st.error(f"작업 중 오류 발생: {e}")

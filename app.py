@@ -3,12 +3,14 @@ import asyncio
 import time
 
 import streamlit as st
+import google.generativeai as genai
 
 from utils.logger import setup_logger
 from utils.file_manager import folder_to_markdown
 
 from modules import ReadmeGenerator
 from modules import RepoDownloader
+from modules.ai_providers import get_ai_provider
 
 # 페이지 기본 설정 (화면을 넓게 씀)
 st.set_page_config(page_title="GitHub README Generator", layout="wide")
@@ -55,10 +57,29 @@ if 'results' not in st.session_state:
 
 def get_current_repo():
     """현재 인덱스에 해당하는 레포지토리 정보를 반환"""
-    if 'repos' not in st.session_state or not st.session_state.repos:
+    if 'results' not in st.session_state or not st.session_state.results:
         return None
-    idx = st.session_state.preview_index % len(st.session_state.archive_pairs)
-    return st.session_state.archive_pairs[idx]
+    idx = st.session_state.preview_index % len(st.session_state.results)
+    return st.session_state.results[idx]
+
+# ==========================================
+# 헬퍼 함수: 사용 가능한 Gemini 모델 가져오기
+# ==========================================
+@st.cache_data(ttl=3600) # 1시간 동안 캐싱 (API 호출 절약)
+def get_available_gemini_models(api_key):
+    """API 키를 이용해 실제 사용 가능한 모델 리스트를 가져옴"""
+    try:
+        genai.configure(api_key=api_key)
+        models = []
+        for m in genai.list_models():
+            # 텍스트 생성이 가능한 모델만 필터링
+            if 'generateContent' in m.supported_generation_methods:
+                # 'models/gemini-pro' 형태에서 'models/' 제거하고 깔끔하게
+                models.append(m.name.replace("models/", ""))
+        return models
+    except Exception as e:
+        # 에러 발생 시(키가 틀렸거나 등) 기본 목록 반환
+        return ["gemini-1.5-flash", "gemini-pro", "gemini-1.0-pro"]
 
 # ==========================================
 # 사이드바: 설정 영역
@@ -67,29 +88,48 @@ def get_current_repo():
 with st.sidebar:
     st.header("⚙️ 환경 설정")
     
-    # 1. AI 모델 선택
-    ai_model = st.selectbox(
-        "사용할 AI 모델", 
-        ["Gemini", "ChatGPT (OpenAI)"],
+    # 1. AI 서비스 선택
+    # (변수명을 service_provider로 명확히 함)
+    service_provider = st.selectbox(
+        "AI 서비스 선택", 
+        ["Gemini", "OpenAI"],
         index=0
     )
     
-    # 2. API 키 입력 (비밀번호처럼 가려서 받기)
+    # 2. API 키 입력
     api_key = st.text_input(
-        f"{ai_model} API Key", 
+        f"{service_provider} API Key", 
         type="password",
-        placeholder="sk-..."
+        placeholder="sk-..." if service_provider == "OpenAI" else "AIza..."
     )
     
-    st.info("API Key는 저장되지 않고 휘발됩니다.")
+    # 3. [NEW] 모델 선택 로직
+    selected_model_name = ""
     
-    # (선택) GitHub 토큰도 여기서 받으면 깔끔함
-    st.divider()
-    github_token = st.text_input(
-        "GitHub Token (Optional)", 
-        type="password",
-        help="Private 레포지토리를 접근하려면 필요합니다."
-    )
+    if service_provider == "Gemini":
+        if api_key:
+            # 키가 있으면 실제 목록을 가져옴
+            with st.spinner("모델 목록 불러오는 중..."):
+                gemini_options = get_available_gemini_models(api_key)
+                
+            selected_model_name = st.selectbox(
+                "사용할 모델 (Model)", 
+                gemini_options,
+                index=0 
+            )
+            # 1.5-flash가 안되면 여기서 gemini-pro 등을 선택하면 됨!
+        else:
+            # 키가 없으면 그냥 보여주기용 더미
+            st.selectbox("사용할 모델", ["API 키를 먼저 입력하세요"], disabled=True)
+            
+    else: # OpenAI인 경우
+        selected_model_name = st.selectbox(
+            "사용할 모델",
+            ["gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"],
+            index=0
+        )
+        
+    st.info("API Key는 저장되지 않습니다.")
     
 # --- [UI 레이아웃] ---
 st.title("Auto README Generator Dashboard")
@@ -139,7 +179,7 @@ with col_mid:
     st.subheader("2. 레포지토리 선택")
     
     # 컨테이너를 사용하여 영역 구분
-    with st.container(height=400, border=False):
+    with st.container(height=400, border=True):
         st.write("가져온 레포지토리 목록")
         
         # 전체 선택/해제 기능 (선택 사항)
@@ -183,28 +223,47 @@ with col_mid:
     # ---------------------------------------------------------
     # [Mock] 2. AI 생성 Async 함수 (다운로드 로직과 구조 동일)
     # ---------------------------------------------------------
-    async def mock_generate_all_readmes_async(repo_names, file_paths):
+    async def generate_all_readmes_async(repo_names, contents):
         """
         [새로 추가된 부분]
         다운로드된 파일 경로들을 받아, 내부적으로 비동기(gather)로
         AI 생성을 수행하고 결과 내용을 반환하는 함수
         """
+        if not api_key:
+            st.error("API 키를 입력해주세요.")
+            return []
         
+        ai_provider = get_ai_provider(service_provider, api_key, model_name=selected_model_name)
+        
+        logger.debug(f"🧠 AI Provider: {type(ai_provider).__name__} 사용하여 README 생성 시작")
         # 내부 함수: 개별 생성 작업
-        async def generate_single(name, path):
-            # TODO: 여기에 실제 LangChain/OpenAI 비동기 호출 (await llm.ainvoke...)
-            await asyncio.sleep(1.5) # 생성 시간 시뮬레이션
-            return f"# {name}\n\nAI가 생성한 리드미 내용입니다.\n소스 경로: {path}"
+        async def generate_single(name, content):
+            return await ai_provider.generate_readme(name, content, user_keywords, target_lang)
 
         # asyncio.gather를 사용하여 모든 생성을 병렬로 실행!
         # 다운로드 함수처럼 모든 작업이 끝날 때까지 기다렸다가 결과를 리스트로 받음
         results = await asyncio.gather(*[
-            generate_single(name, path) 
-            for name, path in zip(repo_names, file_paths)
+            generate_single(name, content) 
+            for name, content in zip(repo_names, contents)
         ])
         
         return results
 
+    async def generate_readme_async(repo_name, content):
+        """
+        [새로 추가된 부분]
+        다운로드된 파일 경로들을 받아, 내부적으로 비동기(gather)로
+        AI 생성을 수행하고 결과 내용을 반환하는 함수
+        """
+        if not api_key:
+            st.error("API 키를 입력해주세요.")
+            return None
+
+        ai_provider = get_ai_provider(service_provider, api_key, model_name=selected_model_name)
+
+        readme = await ai_provider.generate_readme(repo_name, content, user_keywords, target_lang)
+        
+        return repo_name, readme
     # ---------------------------------------------------------
     # 3. 버튼 클릭 핸들러 (매우 깔끔해짐)
     # ---------------------------------------------------------
@@ -224,9 +283,10 @@ with col_mid:
                 with st.status("📦 폴더를 하나의 마크다운 파일로 패키징 중입니다...", expanded=True) as status:
                     
                     mk_dir = os.path.join(st.session_state.download_dir, st.session_state.user_name)
+                    contents = []
                     for repo_name, file_path in zip(repo_names, file_paths):
                         output_path = os.path.join(mk_dir, f"{repo_name}.md")
-                        folder_to_markdown(file_path, output_path, logger)
+                        contents.append(folder_to_markdown(file_path, output_path, logger))
                         
                     
                 
@@ -238,23 +298,23 @@ with col_mid:
                 with st.status("🧠 AI가 README를 생성하고 있습니다...", expanded=True) as status:
                     
                     # 여기서 '생성 함수'를 호출 (일괄 처리)
-                    readme_contents = await mock_generate_all_readmes_async(repo_names, file_paths)
-                    
+                    readme_contents = await generate_all_readmes_async(repo_names, contents)
+                    logger.debug(f"📝 생성된 README 개수: {len(readme_contents)}")
                     status.update(label="✨ 모든 작업 완료!", state="complete", expanded=False)
                 
-                return repo_names, readme_contents
+                return repo_names, readme_contents, contents
 
             # -------------------------------------------------
             # 실행 진입점 (asyncio.run)
             # -------------------------------------------------
             try:
                 # 파이프라인 실행 및 결과 받아오기
-                final_names, final_contents = asyncio.run(run_pipeline())
+                final_names, final_contents, contexts = asyncio.run(run_pipeline())
                 
                 st.success(f"총 {len(final_names)}개의 README가 생성되었습니다.")
                 
                 # (선택) 결과를 세션에 저장하거나 미리보기에 바로 반영
-                st.session_state.results = zip(final_names, final_contents)
+                st.session_state.results = list(zip(final_names, final_contents, contexts))
                 
             except Exception as e:
                 st.error(f"작업 중 오류 발생: {e}")
@@ -266,6 +326,7 @@ with col_right:
     st.subheader("3. 결과 미리보기")
     
     current_repo = get_current_repo()
+    idx = st.session_state.preview_index % len(st.session_state.results) if st.session_state.results else 0
     
     # [수정됨] 데이터가 없을 때의 처리 (Empty State)
     if current_repo is None:
@@ -292,7 +353,7 @@ with col_right:
                 
         with nav_col2:
             st.markdown(f"<h3 style='text-align: center; margin:0;'>{current_repo[0]}</h3>", unsafe_allow_html=True)
-            
+
         with nav_col3:
             if st.button("▶", key="next"):
                 st.session_state.preview_index += 1
@@ -303,7 +364,6 @@ with col_right:
         # --- README 미리보기 ---
         preview_container = st.container(height=500, border=True)
         with preview_container:
-            # content 키가 없는 경우 대비
             content = current_repo[1]
             st.markdown(content)
         
@@ -312,6 +372,8 @@ with col_right:
         # --- 개별 재생성 버튼 ---
         if st.button(f"🔄 '{current_repo[0]}' 리드미만 다시 재생성", use_container_width=True):
             with st.spinner(f"'{current_repo[0]}'를 다시 분석하고 있습니다..."):
-                time.sleep(1) # TODO: 단일 재생성 로직
+                repo_name, readme = asyncio.run(generate_readme_async(current_repo[0], current_repo[2]))
+                st.session_state.results[idx] = (repo_name, readme, current_repo[2])
+                current_repo = st.session_state.results[idx]
             st.toast("재생성 완료!", icon="✅")
             st.rerun()

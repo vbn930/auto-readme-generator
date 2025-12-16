@@ -159,3 +159,5 @@ def folder_to_markdown(root_path, output_file, logger: logging.Logger):
     
     logger.debug(f"✅ 완료! 총 {file_count}개의 코드 파일이 포함되었습니다.")
     logger.debug(f"📁 생성된 파일: {os.path.abspath(output_file)}")
+    
+    return final_text
